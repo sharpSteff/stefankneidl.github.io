@@ -2,6 +2,7 @@
 title: "AvalonDock v5 — The Biggest Undertaking Since 2020"
 author: "sharpSteff"
 pubDatetime: 2026-06-03T08:00:00Z
+modDatetime: 2026-06-09T12:00:00Z
 slug: avalondock-v5
 featured: true
 draft: false
@@ -53,14 +54,14 @@ That is the codebase I started working with — and the one v5 begins to fix.
 
 ### Dropping End-of-Life .NET Versions
 
-The first concrete step was cutting support for all EOL .NET runtimes. This means AvalonDock v5 targets **only actively supported .NET versions** — currently .NET Framework 4.8, .NET 8, .NET 9 and .NET 10 .
+The first concrete step was cutting support for all EOL .NET runtimes. This means AvalonDock v5 targets **only actively supported .NET versions** — currently .NET Framework 4.8, .NET 9, and .NET 10.
 
 This might sound like housekeeping, but it has real downstream effects. It removes years of `#if` conditional compilation blocks. It enables use of modern C# language features and runtime APIs. It simplifies the CI matrix. And it sends a message: this library is for modern .NET, full stop.
 
 The target framework moniker in the project file now looks like this instead of a list of eight TFMs:
 
 ```xml
-<TargetFrameworks>net48-windows;net8.0-windows;net9.0-windows;net10.0-windows</TargetFrameworks>
+<TargetFrameworks>net48-windows;net9.0-windows;net10.0-windows</TargetFrameworks>
 ```
 
 ### Introducing AvalonDock.Core
@@ -101,48 +102,47 @@ public void LayoutRoot_ShouldSerializeAndDeserializeDocuments()
 
 No WPF. No `Application.Current`. No thread affinity issues. Just logic.
 
-This separation also means the door is now open — at least architecturally — for other UI frameworks to sit on top of the same engine. That's not a v5 deliverable, but it's no longer structurally impossible. [PR #566](https://github.com/Dirkster99/AvalonDock/pull/566) already provides additional separation between the core and WPF layers, making it easier to swap out the WPF rendering for the UNO platform.
+This separation also means the door is now open — at least architecturally — for other UI frameworks to sit on top of the same engine. That's not a v5 deliverable, but it's no longer structurally impossible. [PR #566](https://github.com/Dirkster99/AvalonDock/pull/566) already provides additional separation between the core and WPF layers, making it easier to swap out the WPF rendering for the UNO platform. Since the original post, even more WPF-specific logic has been extracted — the drop-zone overlay geometry (the math behind drag-and-drop preview rectangles) now lives in Core as well.
 
 ---
 
-## What's on the Roadmap
+## What's Shipped and What's Next
 
-Since this is early pre-alpha, most of the high-level features are already implemented but still experimental. Here's what's planned and what they'll look like when they land.
+Since the original post, several major features have moved from roadmap to landed code. Here's the current state.
 
 ### First-Class Dependency Injection Support
 
 Today, getting AvalonDock to play nicely with a DI container requires workarounds. v5 ships a set of `IServiceCollection` extension methods that make DI a first-class citizen.
 
-With v5, registration wires up your factory, serializer, and toolbox ViewModels in one place:
+With v5, a single `AddDockLayoutService` call with a `DockLayoutBuilder` wires up toggle dock options and toolbox ViewModels in one self-documenting composition root:
 
 ```csharp
 private static void ConfigureServices(IServiceCollection services)
 {
-    // Toggle panel options
-    services.AddToggleDockOptions(opts =>
+    services.AddDockLayoutService(dock =>
     {
-        opts.ButtonSize = 28;
-        opts.DefaultDockWidth = 280;
-        opts.DefaultDockHeight = 220;
-        opts.LayoutPriority = nameof(DockLayoutPriority.BottomFullWidth);
+        dock.ConfigureToggleDock(opts =>
+        {
+            opts.ButtonSize = 28;
+            opts.DefaultDockWidth = 280;
+            opts.DefaultDockHeight = 220;
+            opts.LayoutPriority = nameof(DockLayoutPriority.BottomFullWidth);
+        });
+
+        // Register toolboxes — order determines sidebar button order
+        dock.AddToolbox<FolderExplorerViewModel>(sp => new FolderExplorerViewModel(_ => { }));
+        dock.AddToolbox<SearchViewModel>();
+        dock.AddToolbox<SourceControlViewModel>();
+        dock.AddToolbox<ProblemsViewModel>();
+        dock.AddToolbox<TerminalViewModel>();
     });
-
-    // Register toolboxes — order determines sidebar button order
-    services.AddToolbox<FolderExplorerViewModel>(sp => new FolderExplorerViewModel(_ => { }));
-    services.AddToolbox<SearchViewModel>();
-    services.AddToolbox<SourceControlViewModel>();
-    services.AddToolbox<ProblemsViewModel>();
-    services.AddToolbox<TerminalViewModel>();
-
-    // Dock layout service — auto-builds the MVVM dock tree from toolboxes
-    services.AddDockLayoutService();
 
     services.AddSingleton<MainViewModel>();
     services.AddSingleton<MainWindow>();
 }
 ```
 
-`AddToolbox<T>` registers each tool panel ViewModel as a singleton; `AddDockLayoutService()` then collects all registered `IToolbox` instances and builds the layout tree automatically. Your ViewModels get full constructor injection — no `Activator.CreateInstance`, no static service locators.
+The builder pattern groups all related registrations under a single entry point. `AddToolbox<T>` registers each tool panel ViewModel as a singleton; the `DockLayoutBuilder` then collects all registered `IToolbox` instances and builds the layout tree automatically. Your ViewModels get full constructor injection — no `Activator.CreateInstance`, no static service locators.
 
 Additional extension methods cover the rest of the surface area: `AddAvalonDock<TFactory>` for a custom content factory, `AddAvalonDockSerializer<T>` for a pluggable serializer, `AddAvalonDockThemeManager<T>`, `AddDockingManager`, `AddAutoHideManager<T>`, `AddFloatingWindowService<T>`, and `AddDragDropHandler<T>`.
 
@@ -175,11 +175,14 @@ One of the features I'm personally most excited about is a new optional docking 
 In classic AvalonDock, tool windows are either docked in the layout or floating. In the Toggle mode, panels appear and disappear on demand — think "Properties" pane that slides in when you need it and collapses completely when you don't, without permanently occupying layout space.
 This is implemented as a new `ToggleDockingManager` control that sits alongside the existing `DockingManager`. It has its own layout engine and serialization, but shares the same core docking logic. You can use it for specific panels while keeping others in the traditional docked style.
 
-### Serialization Abstraction
+### Serialization — DTO-Based and Format-Agnostic
 
-The existing `XmlLayoutSerializer` is hardcoded into the library. Swapping it out for JSON or a custom format requires forking the serialization code or working around it with wrapper logic.
+One of the biggest internal refactors just landed: the entire serialization stack has been [rebuilt around a DTO layer](https://github.com/Dirkster99/AvalonDock/pull/580), completely removing `IXmlSerializable` from the layout model classes. Previously, every layout element (`LayoutRoot`, `LayoutPanel`, `LayoutAnchorable`, etc.) was responsible for its own XML serialization through `ReadXml`/`WriteXml` overrides — tightly coupling the model to a single format and to WPF's `System.Xml`.
 
-The v5 approach introduces a proper abstraction:
+Now, a dedicated `LayoutDtoMapper` translates between the live layout tree and a clean set of DTO classes (`LayoutRootDto`, `LayoutPanelDto`, `LayoutDocumentDto`, etc.). Serializers operate on DTOs, not on the model directly. This means:
+
+- **The layout model classes lost ~900 lines of serialization boilerplate.** They're cleaner and easier to reason about.
+- **Any serializer can be plugged in** by implementing `ILayoutSerializer` against the DTO layer — XML, JSON, or your own format.
 
 ```csharp
 public interface ILayoutSerializer
@@ -189,7 +192,7 @@ public interface ILayoutSerializer
 }
 ```
 
-The `XmlLayoutSerializer` becomes one implementation. A new `JsonLayoutSerializer` ships alongside it, and you can bring your own:
+The `XmlLayoutSerializer` and `JsonLayoutSerializer` ship as separate NuGet packages (`Dirkster.AvalonDock.Serializer.Xml` and `Dirkster.AvalonDock.Serializer.Json`), and you can bring your own:
 
 ```csharp
 // Use the new JSON serializer
@@ -203,6 +206,38 @@ dockingManager.Layout = restored;
 ```
 
 This matters in practice because XML layout files are notoriously brittle — a single attribute name change breaks deserialization silently. JSON with a proper schema allows versioned migration paths.
+
+### VS2022 Theme
+
+A new [VS2022 theme](https://github.com/Dirkster99/AvalonDock/pull/582) has been added with Blue, Dark, and Light variants — bringing AvalonDock's visual options up to parity with the current Visual Studio generation.
+
+The VS2022 theme is built on the same `.vstheme` infrastructure that was introduced earlier in v5 for the VS2013 theme migration. Instead of maintaining hundreds of lines of hand-written XAML brush dictionaries per variant, themes are now authored as `.vstheme` files (a structured color palette format inspired by Visual Studio's own theme exports). A `VsThemeParser` reads these palettes at runtime and generates the WPF resource dictionaries automatically. The VS2013 themes were the first to migrate onto this system — replacing ~1,200 lines of XAML brushes with compressed `.vstheme.gz` files — and VS2022 was built natively on it from the start.
+
+```csharp
+dockManager.Theme = new VS2022DarkTheme();
+dockManager.Theme = new VS2022LightTheme();
+dockManager.Theme = new VS2022BlueTheme();
+```
+
+### Drop-Zone Geometry Moved to Core
+
+Continuing the theme of separating WPF-specific code from reusable logic, the [drop-zone overlay geometry](https://github.com/Dirkster99/AvalonDock/commit/527874f) — the math that calculates where preview rectangles appear during drag-and-drop — has been extracted from the WPF layer into `AvalonDock.Core`.
+
+New `OverlayPreviewRules` and `OverlayTabTargetRules` helpers express the overlay logic using only primitive types (`double`, `out` parameters) with no WPF dependency. The WPF-specific drop target classes (`DockingManagerDropTarget`, `DocumentPaneDropTarget`, `AnchorablePaneDropTarget`) now consume these shared rules rather than inlining the calculations. This is another building block toward making the core docking engine available to non-WPF UI frameworks.
+
+---
+
+## Screenshots
+
+Here's what the ToggleDockingManager looks like in action with the current v5 pre-alpha:
+
+![AvalonDock Dark Welcome](/images/avalondock/AvalonDockCodeApp_Dark_Welcome.png)
+
+![AvalonDock Light Drag Document](/images/avalondock/AvalonDockCodeApp_Light_Drag_Document.png)
+
+![AvalonDock Dark Toolbox](/images/avalondock/AvalonDockCodeApp_Dark_Toolbox.png)
+
+![AvalonDock Light Welcome](/images/avalondock/AvalonDockCodeApp_Light_Welcome.png)
 
 ---
 
