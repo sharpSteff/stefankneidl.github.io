@@ -255,11 +255,13 @@ Here's what the ToggleDockingManager looks like in action with the current v5 pr
 
 ![AvalonDock Dark Welcome](../../assets/images/AvalonDockCodeApp_Dark_Welcome.png)
 
-![AvalonDock Light Drag Document](../../assets/images/AvalonDockCodeApp_Light_Drag_Document.png)
-
 ![AvalonDock Dark Toolbox](../../assets/images/AvalonDockCodeApp_Dark_Toolbox.png)
 
+![AvalonDock Dark Drag Document](../../assets/images/AvalonDockCodeApp_Dark_Drag.png)
+
 ![AvalonDock Light Welcome](../../assets/images/AvalonDockCodeApp_Light_Welcome.png)
+
+![AvalonDock Light Drag Document](../../assets/images/AvalonDockCodeApp_Light_Drag_Document.png)
 
 ---
 
