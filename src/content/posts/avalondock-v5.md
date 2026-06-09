@@ -102,13 +102,13 @@ public void LayoutRoot_ShouldSerializeAndDeserializeDocuments()
 
 No WPF. No `Application.Current`. No thread affinity issues. Just logic.
 
-This separation also means the door is now open — at least architecturally — for other UI frameworks to sit on top of the same engine. That's not a v5 deliverable, but it's no longer structurally impossible. [PR #566](https://github.com/Dirkster99/AvalonDock/pull/566) already provides additional separation between the core and WPF layers, making it easier to swap out the WPF rendering for the UNO platform. Since the original post, even more WPF-specific logic has been extracted — the drop-zone overlay geometry (the math behind drag-and-drop preview rectangles) now lives in Core as well.
+This separation also means the door is now open — at least architecturally — for other UI frameworks to sit on top of the same engine. That's not a v5 deliverable, but it's no longer structurally impossible. [PR #566](https://github.com/Dirkster99/AvalonDock/pull/566) already provides additional separation between the core and WPF layers, making it easier to swap out the WPF rendering for the UNO platform. 
 
 ---
 
 ## What's Shipped and What's Next
 
-Since the original post, several major features have moved from roadmap to landed code. Here's the current state.
+Since this is early pre-alpha, most of the high-level features are already implemented but still experimental. Here's what's planned and what they'll look like when they land.
 
 ### First-Class Dependency Injection Support
 
@@ -177,18 +177,44 @@ This is implemented as a new `ToggleDockingManager` control that sits alongside 
 
 ### Serialization — DTO-Based and Format-Agnostic
 
-One of the biggest internal refactors just landed: the entire serialization stack has been [rebuilt around a DTO layer](https://github.com/Dirkster99/AvalonDock/pull/580), completely removing `IXmlSerializable` from the layout model classes. Previously, every layout element (`LayoutRoot`, `LayoutPanel`, `LayoutAnchorable`, etc.) was responsible for its own XML serialization through `ReadXml`/`WriteXml` overrides — tightly coupling the model to a single format and to WPF's `System.Xml`.
+One of the biggest legacy topics was also tackled: the entire serialization stack has been [rebuilt around a DTO layer](https://github.com/Dirkster99/AvalonDock/pull/580), completely removing `IXmlSerializable` from the layout model classes. Previously, every layout element (`LayoutRoot`, `LayoutPanel`, `LayoutAnchorable`, etc.) was responsible for its own XML serialization through `ReadXml`/`WriteXml` overrides — tightly coupling the model to a single format with an unresolvable dependency on WPFs Dispatcher for any serialization logic.
 
 Now, a dedicated `LayoutDtoMapper` translates between the live layout tree and a clean set of DTO classes (`LayoutRootDto`, `LayoutPanelDto`, `LayoutDocumentDto`, etc.). Serializers operate on DTOs, not on the model directly. This means:
 
 - **The layout model classes lost ~900 lines of serialization boilerplate.** They're cleaner and easier to reason about.
-- **Any serializer can be plugged in** by implementing `ILayoutSerializer` against the DTO layer — XML, JSON, or your own format.
+- **Any serializer can be plugged in** by inheriting `LayoutSerializerBase` against the DTO layer — XML, JSON, or your own format without touching the core layout model or WPF-specific logic.
 
 ```csharp
-public interface ILayoutSerializer
+public abstract class LayoutSerializerBase : ILayoutSerializer
 {
-    string Serialize(LayoutRoot layout);
-    LayoutRoot Deserialize(string data);
+
+    ......
+
+    public void Serialize(Stream stream)
+    {
+        var dto = Manager.DtoMapper.ToDto(Manager.Layout);
+        SerializeCore(stream, dto);
+    }
+
+    public void Deserialize(Stream stream)
+    {
+        ....
+        var dto = DeserializeCore(stream);
+        var layout = Manager.DtoMapper.FromDto(dto);
+        ....       
+    }
+
+    /// <summary>Writes the layout DTO to the stream in the concrete format (XML, JSON, etc.).</summary>
+    /// <param name="stream">The stream to write to.</param>
+    /// <param name="dto">The layout root DTO to serialize.</param>
+    protected abstract void SerializeCore(Stream stream, LayoutRootDto dto);
+
+    /// <summary>Reads a layout DTO from the stream in the concrete format.</summary>
+    /// <param name="stream">The stream to read from.</param>
+    /// <returns>The deserialized layout root DTO.</returns>
+    protected abstract LayoutRootDto DeserializeCore(Stream stream);
+
+    .....
 }
 ```
 
@@ -196,16 +222,12 @@ The `XmlLayoutSerializer` and `JsonLayoutSerializer` ship as separate NuGet pack
 
 ```csharp
 // Use the new JSON serializer
-var serializer = new JsonLayoutSerializer();
-var json = serializer.Serialize(dockingManager.Layout);
-File.WriteAllText("layout.json", json);
+var serializer = new JsonLayoutSerializer(dockingManager);
+serializer.Serialize("layout.json");
 
 // Restore on next launch
-var restored = serializer.Deserialize(File.ReadAllText("layout.json"));
-dockingManager.Layout = restored;
+serializer.Deserialize("layout.json");
 ```
-
-This matters in practice because XML layout files are notoriously brittle — a single attribute name change breaks deserialization silently. JSON with a proper schema allows versioned migration paths.
 
 ### VS2022 Theme
 
@@ -231,13 +253,13 @@ New `OverlayPreviewRules` and `OverlayTabTargetRules` helpers express the overla
 
 Here's what the ToggleDockingManager looks like in action with the current v5 pre-alpha:
 
-![AvalonDock Dark Welcome](/images/avalondock/AvalonDockCodeApp_Dark_Welcome.png)
+![AvalonDock Dark Welcome](../assets/images/avalondock/AvalonDockCodeApp_Dark_Welcome.png)
 
-![AvalonDock Light Drag Document](/images/avalondock/AvalonDockCodeApp_Light_Drag_Document.png)
+![AvalonDock Light Drag Document](../assets/images/avalondock/AvalonDockCodeApp_Light_Drag_Document.png)
 
-![AvalonDock Dark Toolbox](/images/avalondock/AvalonDockCodeApp_Dark_Toolbox.png)
+![AvalonDock Dark Toolbox](../assets/images/avalondock/AvalonDockCodeApp_Dark_Toolbox.png)
 
-![AvalonDock Light Welcome](/images/avalondock/AvalonDockCodeApp_Light_Welcome.png)
+![AvalonDock Light Welcome](../assets/images/avalondock/AvalonDockCodeApp_Light_Welcome.png)
 
 ---
 
