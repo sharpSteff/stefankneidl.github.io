@@ -26,7 +26,7 @@ v5 is currently in **early pre-alpha** — not yet released, still actively unde
 
 ## A Brief History of AvalonDock
 
-To appreciate v5, it helps to understand just how long this library has been around.
+To appreciate AvalonDock v5, it helps to understand just how long this library has been around.
 
 ### The CodePlex Era — AvalonDock 1.x & 2.x
 
@@ -50,7 +50,7 @@ That is the codebase I started working with — and the one v5 begins to fix.
 
 ---
 
-## What v5 Is Changing
+## What AvalonDock v5 Is Changing
 
 ### Dropping End-of-Life .NET Versions
 
@@ -80,7 +80,7 @@ After this change, a test for layout serialization looks like this:
 
 ```csharp
 // No WPF dependencies required
-[Fact]
+[Test]
 public void LayoutRoot_ShouldSerializeAndDeserializeDocuments()
 {
     var root = new LayoutRoot();
