@@ -189,9 +189,14 @@ In XAML you bind `DockLayout` directly to the manager — no manual wiring of `D
 ### Toggle Docking Manager
 
 One of the features I'm personally most excited about is a new optional docking mode inspired by VSCode and IntelliJ: **panel toggling** instead of permanent docking.
+![AvalonDock Dark Welcome](../../assets/images/AvalonDockCodeApp_Dark_Welcome.png)
 
 In classic AvalonDock, tool windows are either docked in the layout or floating. In the Toggle mode, panels appear and disappear on demand — think "Properties" pane that slides in when you need it and collapses completely when you don't, without permanently occupying layout space.
+
+![AvalonDock Dark Toolbox](../../assets/images/AvalonDockCodeApp_Dark_Toolbox.png)
+
 This is implemented as a new `ToggleDockingManager` control that sits alongside the existing `DockingManager`. It has its own layout engine and serialization, but shares the same core docking logic. You can use it for specific panels while keeping others in the traditional docked style.
+
 
 ### Serialization — DTO-Based and Format-Agnostic
 
